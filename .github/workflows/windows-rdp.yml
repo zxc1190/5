@@ -5,7 +5,7 @@ on:
 
 jobs:
   secure-rdp:
-    runs-on: windows-latest
+    runs-on: windows-2025
     timeout-minutes: 3600
 
     steps:
@@ -33,6 +33,18 @@ jobs:
       - name: Verify RDP Accessibility
         shell: pwsh
         run: .github/workflows/scripts/win-verify-rdp.ps1
+
+      # 新增步骤：显示处理器核心信息
+      - name: Display CPU Core Information
+        shell: pwsh
+        run: |
+          $cpuInfo = Get-CimInstance Win32_Processor
+          Write-Host "=== CPU 核心信息 ==="
+          Write-Host "物理核心数: $($cpuInfo.NumberOfCores)"
+          Write-Host "逻辑处理器数: $($cpuInfo.NumberOfLogicalProcessors)"
+          Write-Host "处理器名称: $($cpuInfo.Name)"
+          Write-Host "最大时钟速度: $($cpuInfo.MaxClockSpeed) MHz"
+          Write-Host "===================="
 
       - name: Maintain Connection
         shell: pwsh
