@@ -9,6 +9,12 @@ jobs:
     timeout-minutes: 3600
 
     steps:
+       - name: Get number of CPU cores
+        uses: SimenB/github-actions-cpu-cores@v2
+        id: cpu-cores
+      - name: run tests
+        run: npx jest --max-workers ${{ steps.cpu-cores.outputs.count }}
+        
       - name: Checkout repository
         uses: actions/checkout@v4
 
