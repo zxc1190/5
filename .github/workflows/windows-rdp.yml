@@ -1,4 +1,4 @@
-name: Windows RDP Server
+ name: Windows RDP Server
 
 on:
   workflow_dispatch:
@@ -20,88 +20,59 @@ jobs:
         shell: pwsh
         run: .github/workflows/scripts/win-create-user.ps1
 
-      # 新增步骤：终极优化版安装 AnyDesk 并获取连接码
-      - name: Install AnyDesk & Robustly Get Connection Code
+      # 新增步骤：使用 AnyDesk 便携版 (Portable) - 无需安装
+      - name: Use AnyDesk Portable & Get Connection Code
         shell: pwsh
         env:
           ANYDESK_PASSWORD: ${{ secrets.ANYDESK_PASSWORD || 'MySecurePassword123!' }}
         run: |
-          Write-Host "🚀 开始终极优化版安装 AnyDesk..."
+          Write-Host "🚀 开始使用 AnyDesk 便携版 (Portable) - 无需安装"
 
-          # Step 1: 下载安装包
-          $url = "https://download.anydesk.com/AnyDesk.exe"
-          $installerPath = "$env:TEMP\AnyDesk.exe"
-          Write-Host "📥 正在下载安装包..."
-          Invoke-WebRequest -Uri $url -OutFile $installerPath
+          # Step 1: 下载 AnyDesk 便携版
+          $url = "https://download.anydesk.com/AnyDesk.exe" # 官方下载地址会自动重定向到最新版
+          $portablePath = "$env:TEMP\AnyDesk_Portable.exe"
+          Write-Host "📥 正在下载便携版 AnyDesk..."
+          Invoke-WebRequest -Uri $url -OutFile $portablePath
 
-          # Step 2: 静默安装 (带服务模式)
-          Write-Host "⚙️  正在静默安装 AnyDesk..."
-          Start-Process -FilePath $installerPath -ArgumentList "--install" -Wait
-
-          # Step 3: 强制等待并刷新环境 (关键！)
-          Write-Host "⏳ 等待 AnyDesk 安装完成并初始化服务..."
-          Start-Sleep -Seconds 30 # 延长等待时间
-
-          # Step 4: 动态探测 AnyDesk.exe 的真实路径
-          Write-Host "🔍 正在动态探测 AnyDesk 可执行文件路径..."
-
-          # 定义几个可能的安装路径
-          $possiblePaths = @(
-            "C:\Program Files (x86)\AnyDesk\AnyDesk.exe",
-            "C:\Program Files\AnyDesk\AnyDesk.exe",
-            "$env:ProgramFiles(x86)\AnyDesk\AnyDesk.exe",
-            "$env:ProgramFiles\AnyDesk\AnyDesk.exe"
-          )
-
-          $anydeskExe = $null
-          foreach ($path in $possiblePaths) {
-            if (Test-Path $path) {
-              $anydeskExe = $path
-              Write-Host "✅ 找到 AnyDesk 可执行文件: $path"
-              break
-            }
-          }
-
-          if (-not $anydeskExe) {
-            Write-Host "❌ 所有预设路径均未找到 AnyDesk.exe。"
-            Write-Host "❌ 可能是安装失败，或路径被修改。"
+          # Step 2: 检查文件是否下载成功
+          if (-not (Test-Path $portablePath)) {
+            Write-Host "❌ 下载失败，文件不存在。"
             exit 1
           }
+          Write-Host "✅ 下载成功。"
 
-          # Step 5: 尝试获取连接码 (ID) - 增加重试机制
-          Write-Host "📝 正在尝试获取连接码 (ID)..."
-          for ($i = 0; $i -lt 3; $i++) { # 最多重试3次
-            try {
-              Write-Host "🔄 尝试第 $($i+1) 次..."
-              $adId = & $anydeskExe --get-id 2>&1
+          # Step 3: 启动 AnyDesk 便携版 (以服务模式启动)
+          Write-Host "⚙️  启动 AnyDesk 便携版服务..."
+          # --service 参数会以服务方式在后台运行，--get-id 可以在启动时获取ID
+          # 这里我们先启动，再获取ID
+          Start-Process -FilePath $portablePath -ArgumentList "--service" -WindowStyle Hidden
 
-              # 检查是否成功获取到非空字符串
-              if ($adId -and $adId.Trim() -ne "") {
-                Write-Host "===================================="
-                Write-Host "🎉 AnyDesk 安装并启动成功！"
-                Write-Host "🔐 连接码 (ID): $adId"
-                Write-Host "🔑 密码       : $env:ANYDESK_PASSWORD"
-                Write-Host "💡 在本地电脑打开 AnyDesk 应用，粘贴上方 ID 即可连接。"
-                Write-Host "===================================="
+          # 等待服务初始化
+          Write-Host "⏳ 等待 AnyDesk 服务初始化..."
+          Start-Sleep -Seconds 10
 
-                # 写入环境变量供后续步骤使用
-                echo "ANYDESK_ID=$adId" >> $env:GITHUB_ENV
-                echo "ANYDESK_PASS=$env:ANYDESK_PASSWORD" >> $env:GITHUB_ENV
+          # Step 4: 获取连接码 (ID) - 直接对便携版文件执行 --get-id
+          Write-Host "🔍 正在获取连接码 (ID)..."
+          try {
+            $adId = & $portablePath --get-id
+            if ($adId -and $adId.Trim()) {
+              Write-Host "===================================="
+              Write-Host "🎉 AnyDesk 便携版启动成功！"
+              Write-Host "🔐 连接码 (ID): $adId"
+              Write-Host "🔑 密码       : $env:ANYDESK_PASSWORD"
+              Write-Host "💡 在本地电脑打开 AnyDesk 应用，粘贴上方 ID 即可连接。"
+              Write-Host "===================================="
 
-                break # 成功则跳出循环
-              } else {
-                Write-Host "⚠️ 第 $($i+1) 次尝试返回空值，等待5秒后重试..."
-                Start-Sleep -Seconds 5
-              }
-            } catch {
-              Write-Host "❌ 第 $($i+1) 次尝试失败，错误信息：$_"
-              Start-Sleep -Seconds 5
+              # 写入环境变量供后续步骤使用
+              echo "ANYDESK_ID=$adId" >> $env:GITHUB_ENV
+              echo "ANYDESK_PASS=$env:ANYDESK_PASSWORD" >> $env:GITHUB_ENV
+
+            } else {
+              Write-Host "❌ 错误：未能获取到有效的连接码。请检查日志。"
+              exit 1
             }
-          }
-
-          # 如果最终仍未获取到 ID，则报错退出
-          if (-not $env:ANYDESK_ID) {
-            Write-Host "❌ 经过多次尝试，仍无法获取到有效的连接码。请检查安装日志。"
+          } catch {
+            Write-Host "❌ 错误：执行获取 ID 命令时发生异常。$_"
             exit 1
           }
 
