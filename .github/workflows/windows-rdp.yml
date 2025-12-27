@@ -20,100 +20,71 @@ jobs:
         shell: pwsh
         run: .github/workflows/scripts/win-create-user.ps1
 
-      - name: Install Tailscale
+      # 新增步骤：安装 AnyDesk
+      - name: Install AnyDesk Silently
         shell: pwsh
-        run: .github/workflows/scripts/win-install-tailscale.ps1
+        run: |
+          Write-Host "🔽 下载 AnyDesk 安装包..."
+          $url = "https://download.anydesk.com/AnyDesk.exe"
+          $installerPath = "$env:TEMP\AnyDesk.exe"
+          
+          # 下载安装包
+          Invoke-WebRequest -Uri $url -OutFile $installerPath
 
-      - name: Establish Tailscale Connection
-        shell: pwsh
-        env:
-          TAILSCALE_AUTH_KEY: $
-        run: .github/workflows/scripts/win-establish-ts.ps1
+          Write-Host "⚙️  静默安装 AnyDesk..."
+          # --install 模式会在后台安装服务，允许无人值守访问
+          Start-Process -FilePath $installerPath -ArgumentList "--install" -Wait
 
-      - name: Verify RDP Accessibility
-        shell: pwsh
-        run: .github/workflows/scripts/win-verify-rdp.ps1
+          # 等待服务初始化
+          Start-Sleep -Seconds 10
 
-      # 新增步骤：显示处理器核心信息 (已修复语法)
+          # 尝试获取 AnyDesk ID
+          Write-Host "🔍 获取连接码..."
+          try {
+            # 安装后通常会将路径加入环境变量，或者在默认路径
+            $adId = anydesk.exe --get-id
+            if ($adId) {
+              Write-Host "===================================="
+              Write-Host "✅ AnyDesk 安装成功！"
+              Write-Host "🔑 连接码 (ID): $adId"
+              Write-Host "💡 请复制上方 ID，在本地 AnyDesk 客户端中连接。"
+              Write-Host "===================================="
+              
+              # 保存到环境变量，供后续步骤显示
+              echo "ANYDESK_ID=$adId" >> $env:GITHUB_ENV
+            } else {
+              Write-Host "❌ 无法立即获取 ID，请稍后检查日志或手动启动 AnyDesk。"
+            }
+          } catch {
+            Write-Host "❌ 错误: 无法执行 AnyDesk 命令获取 ID。$_"
+          }
+
+      # 原有步骤：显示处理器核心信息 (已修复语法错误)
       - name: Display CPU Core Information
         shell: pwsh
         run: |
           $cpuInfo = Get-CimInstance Win32_Processor
-          Write-Host "=== CPU 核心信息 ==="
+          Write-Host "=== 💻 CPU 核心信息 ==="
           Write-Host "物理核心数: $($cpuInfo.NumberOfCores)"
           Write-Host "逻辑处理器数: $($cpuInfo.NumberOfLogicalProcessors)"
           Write-Host "处理器名称: $($cpuInfo.Name)"
           Write-Host "最大时钟速度: $($cpuInfo.MaxClockSpeed) MHz"
           Write-Host "===================="
 
-      # 新增步骤：安装 AnyDesk 并获取连接码
-      - name: Install and Start AnyDesk
-        shell: pwsh
-        env:
-          # 建议：将密码设置在 GitHub Secrets 中，或者在这里设置明文默认密码
-          ANYDESK_PASSWORD: ${{ secrets.ANYDESK_PASSWORD || 'YourDefaultSecurePassword123!' }}
-        run: |
-          Write-Host "🚀 开始安装 AnyDesk..."
-
-          # 1. 下载 AnyDesk 安装包 (静默安装版)
-          $url = "https://download.anydesk.com/AnyDesk.exe"
-          $path = "$env:TEMP\AnyDesk.exe"
-          Invoke-WebRequest -Uri $url -OutFile $path
-
-          # 2. 运行静默安装 (等待安装完成)
-          Start-Process -FilePath $path -ArgumentList "--install-desktop" -Wait
-
-          # 3. 等待服务启动
-          Start-Sleep -Seconds 10
-
-          # 4. 设置无人值守访问密码 (安全性设置)
-          # AnyDesk 服务版通常通过命令行参数或配置文件设置，这里通过模拟按键或注册表设置较复杂，
-          # 更推荐的做法是连接上去后手动输入，或者使用更高级的自动化工具。
-          # 这里我们主要获取连接码。
-
-          # 5. 获取本机的 AnyDesk ID (连接码)
-          # AnyDesk 通常会将 ID 写入日志或通过命令行查询
-          try {
-            # 尝试通过命令行获取 ID (AnyDesk 需要加入 PATH 或使用全路径)
-            # 如果命令行不可用，尝试从常见路径读取
-            $anydeskExe = "C:\Program Files (x86)\AnyDesk\AnyDesk.exe"
-            if (Test-Path $anydeskExe) {
-              $adId = & $anydeskExe --get-id
-              if ($adId) {
-                Write-Host "===================================="
-                Write-Host "✅ AnyDesk 安装成功！"
-                Write-Host "🔗 连接码 (ID): $adId"
-                Write-Host "🔑 临时密码: $env:ANYDESK_PASSWORD"
-                Write-Host "⚠️  请复制连接码并尽快连接，工作流结束后连接将失效。"
-                Write-Host "===================================="
-              } else {
-                Write-Host "❌ 无法通过命令行获取 ID，AnyDesk 可能未完全启动。"
-              }
-            } else {
-              Write-Host "❌ 找不到 AnyDesk 安装路径。"
-            }
-          } catch {
-            Write-Host "❌ 获取连接码时出错: $_"
-          }
-
-          # 将连接码写入环境，供后续步骤使用
-          echo "ANYDESK_ID=$adId" >> $env:GITHUB_ENV
-
       - name: Maintain Connection
         shell: pwsh
         run: |
-          Write-Host "`n=== 🖥️  RDP ACCESS ==="
+          Write-Host "`n=== 🔐 认证信息 ==="
+          # 显示 AnyDesk 连接码
+          Write-Host "AnyDesk ID: $env:ANYDESK_ID"
+          Write-Host "--- 或 ---"
+          # 显示原有的 Tailscale IP (如果之前配置了的话，否则这行可能为空)
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
           Write-Host "Username: vum"
           Write-Host "Password: $(echo $env:RDP_CREDS)"
           Write-Host "==================`n"
-
-          Write-Host "`n=== 📡 AnyDesk ACCESS ==="
-          Write-Host "AnyDesk ID: $env:ANYDESK_ID"
-          Write-Host "Password: $env:ANYDESK_PASSWORD"
-          Write-Host "==================`n"
           
           while ($true) {
-            Write-Host "[$(Get-Date)] 会话保持运行中... (剩余时间受限于 Actions 超时设置)"
+            Write-Host "[$(Get-Date)] 会话保持运行中... (随时可以在 Actions 页面点击 Cancel 结束)"
             Start-Sleep -Seconds 300
           }
