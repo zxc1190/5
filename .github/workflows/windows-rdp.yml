@@ -20,43 +20,63 @@ jobs:
         shell: pwsh
         run: .github/workflows/scripts/win-create-user.ps1
 
-      # 新增步骤：安装 AnyDesk
-      - name: Install AnyDesk Silently
+      # 新增步骤：安装 AnyDesk 并确保其路径可用
+      - name: Install AnyDesk and Get Connection Code
         shell: pwsh
+        env:
+          # 设置一个默认密码，建议通过 GitHub Secrets 设置更安全的密码
+          ANYDESK_PASSWORD: ${{ secrets.ANYDESK_PASSWORD || 'MySecurePassword123!' }}
         run: |
-          Write-Host "🔽 下载 AnyDesk 安装包..."
+          Write-Host "🚀 开始安装 AnyDesk..."
+
+          # 1. 下载 AnyDesk 安装包
           $url = "https://download.anydesk.com/AnyDesk.exe"
           $installerPath = "$env:TEMP\AnyDesk.exe"
-          
-          # 下载安装包
           Invoke-WebRequest -Uri $url -OutFile $installerPath
 
+          # 2. 静默安装 (包含服务模式)
           Write-Host "⚙️  静默安装 AnyDesk..."
-          # --install 模式会在后台安装服务，允许无人值守访问
           Start-Process -FilePath $installerPath -ArgumentList "--install" -Wait
 
-          # 等待服务初始化
-          Start-Sleep -Seconds 10
+          # 3. 等待 AnyDesk 服务完全启动 (关键！)
+          Write-Host "⏳ 等待 AnyDesk 服务初始化..."
+          Start-Sleep -Seconds 20
 
-          # 尝试获取 AnyDesk ID
-          Write-Host "🔍 获取连接码..."
+          # 4. 定义 AnyDesk 的完整路径 (避免 PATH 问题)
+          $anydeskExe = "C:\Program Files (x86)\AnyDesk\AnyDesk.exe"
+
+          # 检查文件是否存在
+          if (-not (Test-Path $anydeskExe)) {
+            Write-Host "❌ 错误：无法找到 AnyDesk 可执行文件。安装可能失败。"
+            exit 1
+          }
+
+          # 5. 尝试获取连接码 (ID)
+          Write-Host "🔍 正在尝试获取连接码..."
           try {
-            # 安装后通常会将路径加入环境变量，或者在默认路径
-            $adId = anydesk.exe --get-id
-            if ($adId) {
+            # 使用完整路径执行命令
+            $adId = & $anydeskExe --get-id
+            
+            # 如果成功获取到 ID，则打印出来并保存到环境变量
+            if ($adId -and $adId.Trim()) {
               Write-Host "===================================="
-              Write-Host "✅ AnyDesk 安装成功！"
-              Write-Host "🔑 连接码 (ID): $adId"
-              Write-Host "💡 请复制上方 ID，在本地 AnyDesk 客户端中连接。"
+              Write-Host "✅ AnyDesk 安装并启动成功！"
+              Write-Host "🔐 连接码 (ID): $adId"
+              Write-Host "🔑 密码 (可选): $env:ANYDESK_PASSWORD"
+              Write-Host "💡 在本地电脑打开 AnyDesk 应用，粘贴上方 ID 即可连接。"
               Write-Host "===================================="
-              
-              # 保存到环境变量，供后续步骤显示
+
+              # 将连接码写入环境变量，供后续步骤显示
               echo "ANYDESK_ID=$adId" >> $env:GITHUB_ENV
+              echo "ANYDESK_PASS=$env:ANYDESK_PASSWORD" >> $env:GITHUB_ENV
+
             } else {
-              Write-Host "❌ 无法立即获取 ID，请稍后检查日志或手动启动 AnyDesk。"
+              Write-Host "❌ 错误：命令执行成功但未返回有效的连接码。请检查日志。"
+              exit 1
             }
           } catch {
-            Write-Host "❌ 错误: 无法执行 AnyDesk 命令获取 ID。$_"
+            Write-Host "❌ 错误：执行获取 ID 命令时发生异常。$_"
+            exit 1
           }
 
       # 原有步骤：显示处理器核心信息 (已修复语法错误)
@@ -74,17 +94,29 @@ jobs:
       - name: Maintain Connection
         shell: pwsh
         run: |
-          Write-Host "`n=== 🔐 认证信息 ==="
-          # 显示 AnyDesk 连接码
-          Write-Host "AnyDesk ID: $env:ANYDESK_ID"
-          Write-Host "--- 或 ---"
-          # 显示原有的 Tailscale IP (如果之前配置了的话，否则这行可能为空)
-          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          Write-Host "Username: vum"
-          Write-Host "Password: $(echo $env:RDP_CREDS)"
+          Write-Host "`n=== 🔐 认证信息汇总 ==="
+
+          # 显示 AnyDesk 连接信息 (这是主要目标)
+          if ($env:ANYDESK_ID) {
+            Write-Host "🟢 AnyDesk 连接信息:"
+            Write-Host "   连接码 (ID): $env:ANYDESK_ID"
+            Write-Host "   密码       : $env:ANYDESK_PASS"
+            Write-Host "--- 或 ---"
+          }
+
+          # 显示原有的 RDP/Tailscale 连接信息（如果可用）
+          if ($env:TAILSCALE_IP) {
+            Write-Host "🌐 Tailscale RDP 连接信息:"
+            Write-Host "   地址       : $env:TAILSCALE_IP"
+            Write-Host "   用户名     : vum"
+            Write-Host "   密码       : $(echo $env:RDP_CREDS)"
+          } else {
+            Write-Host "🟡 Tailscale 地址未配置或不可用。请确保前面步骤已正确设置。"
+          }
+
           Write-Host "==================`n"
-          
+
           while ($true) {
-            Write-Host "[$(Get-Date)] 会话保持运行中... (随时可以在 Actions 页面点击 Cancel 结束)"
+            Write-Host "[$(Get-Date)] 系统保持在线... (随时可在 GitHub Actions 页面终止工作流)"
             Start-Sleep -Seconds 300
           }
