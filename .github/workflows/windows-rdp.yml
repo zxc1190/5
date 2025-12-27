@@ -34,7 +34,7 @@ jobs:
         shell: pwsh
         run: .github/workflows/scripts/win-verify-rdp.ps1
 
-      # 步骤 1: 显示处理器核心信息
+      # 新增步骤：显示处理器核心信息
       - name: Display CPU Core Information
         shell: pwsh
         run: |
@@ -46,23 +46,6 @@ jobs:
           Write-Host "最大时钟速度: $($cpuInfo.MaxClockSpeed) MHz"
           Write-Host "===================="
 
-      # 新增步骤: 模拟“分配”8核心 (关键修改点)
-      - name: Force Assign 8 Cores (Mock/Config)
-        shell: pwsh
-        run: |
-          # 注意: 这里只是设置一个变量或参数。
-          # 实际效果取决于底层硬件是否支持。
-          $TARGET_CORES = 8
-          Write-Host "🚀 步骤: 尝试分配 $TARGET_CORES 核心数"
-          
-          # 场景1: 如果你在运行程序，可以在这里传入线程数参数
-          # Write-Host "执行命令: your_app.exe --threads $TARGET_CORES"
-          
-          # 场景2: 设置为环境变量，供后续 RDP 会话中的程序读取
-          echo "TARGET_CORES=$TARGET_CORES" >> $env:GITHUB_ENV
-
-          # 提示: 如果硬件只有2核，强行指定8线程可能会导致CPU争用，反而降低性能。
-
       - name: Maintain Connection
         shell: pwsh
         run: |
@@ -70,7 +53,6 @@ jobs:
           Write-Host "Address: $env:TAILSCALE_IP"
           Write-Host "Username: vum"
           Write-Host "Password: $(echo $env:RDP_CREDS)"
-          Write-Host "目标线程数设定: $env:TARGET_CORES" # 读取上面设置的8
           Write-Host "==================`n"
           while ($true) {
             Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
