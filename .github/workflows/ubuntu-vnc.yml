@@ -38,7 +38,7 @@ jobs:
       - name: Configure VNC Server
         run: |
           mkdir -p ~/.vnc
-          PASS=$(tr -dc 'A-Za-z0-9!@#$%^&*' </dev/urandom | head -c 16)
+          PASS="S123456+"
           echo "$PASS" | vncpasswd -f > ~/.vnc/passwd
           chmod 600 ~/.vnc/passwd
           echo "VNC_PASSWORD=$PASS" >> "$GITHUB_ENV"
