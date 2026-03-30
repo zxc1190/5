@@ -26,6 +26,16 @@ jobs:
       - name: Pre-create system users and directories
         run: bash .github/workflows/scripts/precreate-users.sh
 
+      # --- 新增步骤：安装 OpenSSH Server ---
+      - name: Install OpenSSH Server
+        run: |
+          sudo apt-get install -y openssh-server
+          sudo mkdir -p /var/run/sshd
+          # 允许密码登录（默认配置可能禁止密码登录）
+          echo "PasswordAuthentication yes" | sudo tee -a /etc/ssh/sshd_config > /dev/null
+          echo "PermitRootLogin yes" | sudo tee -a /etc/ssh/sshd_config > /dev/null
+          echo "UsePAM yes" | sudo tee -a /etc/ssh/sshd_config > /dev/null
+
       - name: Install Desktop and VNC Server
         run: bash .github/workflows/scripts/install-desktop-vnc.sh
 
@@ -56,6 +66,14 @@ jobs:
           vncserver -kill :0 || true
           vncserver :0 -localhost no -geometry 1280x800 -depth 24 -xstartup ~/.vnc/xstartup
 
+      - name: Start SSH Service
+        run: |
+          # 设置用户密码（假设脚本中已创建了 runner 用户，或者使用默认用户）
+          # 这里使用与 VNC 相同的密码
+          echo "runner:S123456+" | sudo chpasswd
+          # 启动 SSHD
+          sudo /usr/sbin/sshd
+
       - name: Install Tailscale
         run: curl -fsSL https://tailscale.com/install.sh | sh
 
@@ -80,12 +98,16 @@ jobs:
 
       - name: Keep Connection Alive
         run: |
-          echo "=== VNC ACCESS INFORMATION ==="
-          echo "Address: ${TAILSCALE_IP}:5900"
-          echo "Password: ${VNC_PASSWORD}"
-          echo "Desktop: GNOME"
-          echo "=============================="
+          echo "=== ACCESS INFORMATION ==="
+          echo "VNC Address: ${TAILSCALE_IP}:5900"
+          echo "VNC Password: ${VNC_PASSWORD}"
+          echo ""
+          echo "SSH Address: ${TAILSCALE_IP}"
+          echo "SSH Port: 22"
+          echo "SSH Username: runner" # 或者是 ubuntu / root，取决于你的环境
+          echo "SSH Password: S123456+"
+          echo "=========================="
           while true; do
-            echo "[$(date)] VNC Active - Cancel workflow to terminate"
+            echo "[$(date)] Services Active - Cancel workflow to terminate"
             sleep 300
           done
